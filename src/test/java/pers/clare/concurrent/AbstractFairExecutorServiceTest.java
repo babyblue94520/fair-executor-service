@@ -3,7 +3,9 @@ package pers.clare.concurrent;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
@@ -52,8 +54,12 @@ public abstract class AbstractFairExecutorServiceTest<Key> {
         int max = keyCount * taskCount;
         for (int i = 0; i < max; i++) {
             final int id = toId(i);
+            timeMap.put(id, new AtomicLong());
+        }
+        for (int i = 0; i < max; i++) {
+            final int id = toId(i);
             consumer.accept(toKey(id), () -> {
-                timeMap.computeIfAbsent(id, (index) -> new AtomicLong()).addAndGet(System.currentTimeMillis() - startTime);
+                timeMap.get(id).addAndGet(System.currentTimeMillis() - startTime);
                 if (isSlow(id)) {
                     long waitingTime = System.currentTimeMillis() + slowRunTime;
                     while (System.currentTimeMillis() < waitingTime) {
@@ -70,7 +76,7 @@ public abstract class AbstractFairExecutorServiceTest<Key> {
 
         assertEquals(max, count.get());
 
-        System.out.printf("key count: %d, task: %d, total task: %d\n", keyCount, taskCount , max);
+        System.out.printf("key count: %d, task: %d, total task: %d\n", keyCount, taskCount, max);
         System.out.printf("slow key count: %d, run time: %d ms\n", keyCount / slowSpacing, slowRunTime);
         System.out.printf("nullKey: %b, blocking: %b\n", nullKey, isBlocking());
         long slowMaximumTime = 0;
@@ -117,14 +123,14 @@ public abstract class AbstractFairExecutorServiceTest<Key> {
     void keySubmitRunnable() {
         FairExecutorService<Key> executorService = buildExecutorService();
         test(executorService::submit);
-        executorService.getExecutorService().shutdown();
+        executorService.shutdown();
     }
 
     @Test
     void keySubmitRunnableResult() {
         FairExecutorService<Key> executorService = buildExecutorService();
         test((key, runnable) -> executorService.submit(key, runnable, null));
-        executorService.getExecutorService().shutdown();
+        executorService.shutdown();
     }
 
     @Test
@@ -134,28 +140,28 @@ public abstract class AbstractFairExecutorServiceTest<Key> {
             runnable.run();
             return null;
         }));
-        executorService.getExecutorService().shutdown();
+        executorService.shutdown();
     }
 
     @Test
     void keyExecute() {
         FairExecutorService<Key> executorService = buildExecutorService();
         test(executorService::execute);
-        executorService.getExecutorService().shutdown();
+        executorService.shutdown();
     }
 
     @Test
     void submitRunnable() {
         FairExecutorService<Key> executorService = buildExecutorService();
         test2((key, runnable) -> executorService.submit(runnable));
-        executorService.getExecutorService().shutdown();
+        executorService.shutdown();
     }
 
     @Test
     void submitRunnableResult() {
         FairExecutorService<Key> executorService = buildExecutorService();
         test2((key, runnable) -> executorService.submit(runnable, null));
-        executorService.getExecutorService().shutdown();
+        executorService.shutdown();
     }
 
     @Test
@@ -165,13 +171,54 @@ public abstract class AbstractFairExecutorServiceTest<Key> {
             runnable.run();
             return null;
         }));
-        executorService.getExecutorService().shutdown();
+        executorService.shutdown();
     }
 
     @Test
     void execute() {
         FairExecutorService<Key> executorService = buildExecutorService();
         test2((key, runnable) -> executorService.execute(runnable));
-        executorService.getExecutorService().shutdown();
+        executorService.shutdown();
+    }
+
+    @Test
+    void clear() throws InterruptedException {
+        FairExecutorService<Key> executorService = buildExecutorService();
+        int max = 1000;
+        int keyCount = 10;
+        Map<Key, AtomicInteger> countMap = new ConcurrentHashMap<>();
+        for (int i = 0; i < max; i++) {
+            int id = i % keyCount;
+            Key key = toKey(id);
+            countMap.put(key, new AtomicInteger());
+        }
+        for (int i = 0; i < max; i++) {
+            int id = i % keyCount;
+            Key key = toKey(id);
+            executorService.execute(key, () -> {
+                countMap.get(key).incrementAndGet();
+                try {
+                    Thread.sleep(1);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+        Thread.sleep(5);
+        Map<Key, Integer> unexecutedMap = new ConcurrentHashMap<>();
+        for (Map.Entry<Key, AtomicInteger> entry : countMap.entrySet()) {
+            unexecutedMap.put(entry.getKey(), executorService.reset(entry.getKey()).length);
+        }
+        Thread.sleep(5);
+        executorService.shutdown();
+        if (executorService.awaitTermination(5000, TimeUnit.MILLISECONDS)) {
+            for (Map.Entry<Key, AtomicInteger> entry : countMap.entrySet()) {
+                int executed = entry.getValue().get();
+                int unexecuted = Objects.requireNonNullElse(unexecutedMap.get(entry.getKey()), 0);
+                int total = max / keyCount;
+                System.out.printf("executed: %d, unexecuted: %d, total: %d\n", executed, unexecuted, total);
+                assertEquals(executed + unexecuted, max / keyCount);
+            }
+        }
     }
 }

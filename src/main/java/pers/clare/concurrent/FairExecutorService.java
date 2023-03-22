@@ -1,9 +1,6 @@
 package pers.clare.concurrent;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -53,6 +50,20 @@ public class FairExecutorService<Key> implements ExecutorService {
             return defaultKeyQueue;
         } else {
             return queueMap.computeIfAbsent(key, this::createQueue);
+        }
+    }
+
+    /**
+     * Replaced KeyQueue.
+     * @param key Key.
+     * @return Return unexecuted tasks.
+     */
+    public Runnable[] reset(Key key) {
+        KeyQueue queue = queueMap.put(key, createQueue(key));
+        if (queue == null) {
+            return new Runnable[0];
+        }else{
+            return queue.clear();
         }
     }
 
@@ -183,6 +194,17 @@ public class FairExecutorService<Key> implements ExecutorService {
 
         public int size() {
             return queue.size();
+        }
+
+        public Runnable[] clear() {
+            try {
+                lock.lock();
+                Runnable[] tasks = queue.toArray(new Runnable[0]);
+                queue.clear();
+                return tasks;
+            } finally {
+                lock.unlock();
+            }
         }
 
         void put(Runnable command) {
