@@ -1,5 +1,7 @@
 package pers.clare.concurrent;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.*;
@@ -12,7 +14,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * @param <Key> Key type.
  */
 @SuppressWarnings({"unused", "UnusedReturnValue"})
-public class FairExecutorService<Key> {
+public class FairExecutorService<Key> implements ExecutorService {
 
     private final ConcurrentMap<Key, KeyQueue> queueMap = new ConcurrentHashMap<>();
 
@@ -42,6 +44,26 @@ public class FairExecutorService<Key> {
         this.executorService = Objects.requireNonNullElseGet(executorService, () -> Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()));
     }
 
+    public ExecutorService getExecutorService() {
+        return executorService;
+    }
+
+    public KeyQueue getQueue(Key key) {
+        if (key == null) {
+            return defaultKeyQueue;
+        } else {
+            return queueMap.computeIfAbsent(key, this::createQueue);
+        }
+    }
+
+    public int size(Key key) {
+        KeyQueue queue = queueMap.get(key);
+        if (queue != null) {
+            return queue.size();
+        }
+        return 0;
+    }
+
     public Future<?> submit(Key key, Runnable task) {
         return submit(key, task, null);
     }
@@ -68,14 +90,42 @@ public class FairExecutorService<Key> {
         getQueue(key).put(command);
     }
 
+    @Override
+    public void shutdown() {
+        executorService.shutdown();
+    }
+
+    @Override
+    public List<Runnable> shutdownNow() {
+        return executorService.shutdownNow();
+    }
+
+    @Override
+    public boolean isShutdown() {
+        return executorService.isShutdown();
+    }
+
+    @Override
+    public boolean isTerminated() {
+        return executorService.isTerminated();
+    }
+
+    @Override
+    public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+        return executorService.awaitTermination(timeout, unit);
+    }
+
+    @Override
     public <T> Future<T> submit(Callable<T> task) {
         return submit((Key) null, task);
     }
 
+    @Override
     public <T> Future<T> submit(Runnable task, T result) {
         return submit(null, task, result);
     }
 
+    @Override
     public Future<?> submit(Runnable task) {
         return submit((Key) null, task);
     }
@@ -85,12 +135,29 @@ public class FairExecutorService<Key> {
      *
      * @param command Task.
      */
+    @Override
     public void execute(Runnable command) {
         execute(null, command);
     }
 
-    public ExecutorService getExecutorService() {
-        return executorService;
+    @Override
+    public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks) {
+        throw new RejectedExecutionException("invokeAll is not supported.");
+    }
+
+    @Override
+    public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) {
+        throw new RejectedExecutionException("invokeAll is not supported.");
+    }
+
+    @Override
+    public <T> T invokeAny(Collection<? extends Callable<T>> tasks) {
+        throw new RejectedExecutionException("invokeAny is not supported.");
+    }
+
+    @Override
+    public <T> T invokeAny(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) {
+        throw new RejectedExecutionException("invokeAny is not supported.");
     }
 
     protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
@@ -101,24 +168,8 @@ public class FairExecutorService<Key> {
         return new FutureTask<>(callable);
     }
 
-    public KeyQueue getQueue(Key key) {
-        if (key == null) {
-            return defaultKeyQueue;
-        } else {
-            return queueMap.computeIfAbsent(key, this::createQueue);
-        }
-    }
-
     protected KeyQueue createQueue(Key key) {
         return new KeyQueue(new ConcurrentLinkedQueue<>());
-    }
-
-    public int size(Key key) {
-        KeyQueue queue = queueMap.get(key);
-        if (queue != null) {
-            return queue.size();
-        }
-        return 0;
     }
 
     class KeyQueue {

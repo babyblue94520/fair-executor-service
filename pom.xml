@@ -5,7 +5,7 @@
 
     <groupId>io.github.babyblue94520</groupId>
     <artifactId>fair-executor-service</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.1-SNAPSHOT</version>
     <name>fair-executor-service</name>
     <description>This is an ExecuteService with multiple queues and fair handling of tasks.</description>
     <packaging>jar</packaging>
