@@ -16,7 +16,7 @@ delivered a large number of tasks by specific business logic, blocking all threa
 <dependency>
     <groupId>io.github.babyblue94520</groupId>
     <artifactId>fair-executor-service</artifactId>
-    <version>1.0.0-RELEASE</version>
+    <version>0.1.1-RELEASE</version>
 </dependency>
 ```
 
